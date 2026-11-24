@@ -1,0 +1,47 @@
+# Environment and credentials
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Python
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Testing and caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Logs and temporary files
+logs/
+**/logs/
+*.log
+temp/
+tmp/
+
+# Persistent local infrastructure data
+postgres-data/
+seaweedfs-data/
+database-backups/
+dataset-staging/
+
+# Local secrets and infrastructure configuration
+config/s3.json
+!config/s3.json.example
+
+# Local storage test generated files
+download-test.txt
+upload-test.txt
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+desktop.ini

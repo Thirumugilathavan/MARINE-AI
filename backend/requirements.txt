@@ -1,0 +1,40 @@
+# ==============================================================================
+# MARINE-AI Platform Backend Dependencies
+# Python: 3.12+
+# ==============================================================================
+
+# Core Web Framework & Configuration
+fastapi==0.163.1
+uvicorn==0.54.0
+pydantic==2.14.3
+pydantic-settings==2.16.3
+python-dotenv==1.2.4
+python-multipart==0.0.34
+httpx==0.28.1
+starlette==1.10.0
+
+# Database & PostGIS
+SQLAlchemy==2.1.9
+psycopg==3.3.9
+psycopg-binary==3.3.9
+
+# Storage (SeaweedFS S3-compatible)
+boto3==1.44.4
+botocore==1.44.4
+
+# Marine Data Integration (Copernicus Marine Service)
+copernicusmarine==2.5.1
+xarray==2026.9.0
+dask==2026.8.0
+numpy==2.5.5
+pandas==3.1.1
+zarr==3.4.2
+h5netcdf==1.8.3
+h5py==3.16.0
+pystac==1.16.1
+
+# Utilities
+tqdm==4.70.1
+rich==15.0.0
+typer==0.29.1
+requests==2.34.2
