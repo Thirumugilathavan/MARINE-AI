@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     Integer,
+    BigInteger,
     Float,
     DateTime,
     Boolean,
@@ -76,7 +77,7 @@ class IngestionJobModel(Base):
     """
     __tablename__ = "ingestion_jobs"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     provider: Mapped[str] = mapped_column(String(100), nullable=False, default="Copernicus Marine Service")
     product_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     dataset_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
@@ -110,11 +111,11 @@ class IngestionAssetModel(Base):
     """
     __tablename__ = "ingestion_assets"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    job_id: Mapped[str] = mapped_column(String(36), ForeignKey("ingestion_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    job_id: Mapped[str] = mapped_column(String(64), ForeignKey("ingestion_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
     filename: Mapped[str] = mapped_column(String(256), nullable=False)
     file_format: Mapped[str] = mapped_column(String(64), nullable=False, default="NetCDF-4")
-    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     sha256_checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     storage_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="local_staging")  # "local_staging" or "seaweedfs_s3"
     storage_bucket: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -134,16 +135,16 @@ class ValidationReportModel(Base):
     """
     __tablename__ = "validation_reports"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    job_id: Mapped[str] = mapped_column(String(36), ForeignKey("ingestion_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
-    asset_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("ingestion_assets.id", ondelete="SET NULL"), nullable=True, index=True)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    job_id: Mapped[str] = mapped_column(String(64), ForeignKey("ingestion_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    asset_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("ingestion_assets.id", ondelete="SET NULL"), nullable=True, index=True)
     validation_status: Mapped[str] = mapped_column(String(32), nullable=False, default="passed")  # "passed", "warnings", "failed"
     variables_validated: Mapped[List[str]] = mapped_column(JSON_TYPE, nullable=False, default=list)
     dimensions: Mapped[Dict[str, int]] = mapped_column(JSON_TYPE, nullable=False, default=dict)
     coordinates_summary: Mapped[Dict[str, Any]] = mapped_column(JSON_TYPE, nullable=False, default=dict)
-    valid_points_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    missing_points_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    invalid_points_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    valid_points_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    missing_points_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    invalid_points_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     statistics: Mapped[Dict[str, Any]] = mapped_column(JSON_TYPE, nullable=False, default=dict)  # min, max, mean, std
     cf_conventions: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     warnings: Mapped[List[str]] = mapped_column(JSON_TYPE, nullable=False, default=list)
@@ -161,8 +162,8 @@ class ProvenanceRecordModel(Base):
     """
     __tablename__ = "provenance_records"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    job_id: Mapped[str] = mapped_column(String(36), ForeignKey("ingestion_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    job_id: Mapped[str] = mapped_column(String(64), ForeignKey("ingestion_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(100), nullable=False, default="Copernicus Marine Service")
     product_id: Mapped[str] = mapped_column(String(128), nullable=False)
     dataset_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
@@ -179,7 +180,7 @@ class ProvenanceRecordModel(Base):
     source_licence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     toolbox_version: Mapped[str] = mapped_column(String(32), nullable=False, default="2.5.1")
     sha256_checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    validation_report_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    validation_report_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
     # Relationships

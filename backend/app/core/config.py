@@ -1,4 +1,7 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BACKEND_ENV_FILE = str(Path(__file__).resolve().parent.parent.parent / ".env")
 
 
 class Settings(BaseSettings):
@@ -28,7 +31,7 @@ class Settings(BaseSettings):
     seaweedfs_bucket_research: str = "marine-research"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(_BACKEND_ENV_FILE, ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

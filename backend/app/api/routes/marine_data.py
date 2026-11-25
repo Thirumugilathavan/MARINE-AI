@@ -143,21 +143,32 @@ def _run_ingestion_background(
     params: RetrievalParameters,
     retain_in_s3: bool,
 ):
-    """Background task runner for data ingestion."""
+    """Background task runner for data ingestion with dedicated DB session."""
+    db = None
+    try:
+        from app.database.connection import SessionLocal
+        db = SessionLocal()
+    except Exception as e:
+        logger.warning(f"Could not open DB session for background task: {e}")
+
     try:
         result = process_ingestion_job(
             job_id=job_id,
             params=params,
-            db=None,  # Handles standalone or DB context
+            db=db,
             retain_in_s3=retain_in_s3,
         )
-        _IN_MEMORY_JOBS[job_id]["status"] = result["status"]
-        _IN_MEMORY_JOBS[job_id]["result"] = result
+        if job_id in _IN_MEMORY_JOBS:
+            _IN_MEMORY_JOBS[job_id]["status"] = result["status"]
+            _IN_MEMORY_JOBS[job_id]["result"] = result
     except Exception as exc:
         logger.error(f"[Job {job_id}] Ingestion failed in background: {exc}")
         if job_id in _IN_MEMORY_JOBS:
             _IN_MEMORY_JOBS[job_id]["status"] = "failed"
             _IN_MEMORY_JOBS[job_id]["error_summary"] = str(exc)
+    finally:
+        if db:
+            db.close()
 
 
 @router.post(
@@ -273,21 +284,20 @@ def list_ingestion_jobs(
     """Lists recent ingestion jobs."""
     try:
         db_jobs = list_jobs(db, limit=limit, status=status_filter)
-        if db_jobs:
-            return [
-                {
-                    "id": j.id,
-                    "provider": j.provider,
-                    "dataset_id": j.dataset_id,
-                    "product_id": j.product_id,
-                    "status": j.status,
-                    "requested_variables": j.requested_variables,
-                    "created_at": j.created_at,
-                    "completed_at": j.completed_at,
-                    "error_summary": j.error_summary,
-                }
-                for j in db_jobs
-            ]
+        return [
+            {
+                "id": j.id,
+                "provider": j.provider,
+                "dataset_id": j.dataset_id,
+                "product_id": j.product_id,
+                "status": j.status,
+                "requested_variables": j.requested_variables,
+                "created_at": j.created_at,
+                "completed_at": j.completed_at,
+                "error_summary": j.error_summary,
+            }
+            for j in db_jobs
+        ]
     except Exception as db_err:
         logger.debug(f"DB list jobs fell back to memory: {db_err}")
 
@@ -372,26 +382,38 @@ def get_ingestion_job_status(job_id: str, db: Session = Depends(get_db)):
 @router.post("/copernicus/ingestions/{job_id}/validate")
 def validate_job_asset(job_id: str, db: Session = Depends(get_db)):
     """Runs or retrieves validation results for the downloaded file associated with a job."""
-    # Check in-memory first
-    cached_job = _IN_MEMORY_JOBS.get(job_id)
-    if cached_job and "result" in cached_job:
-        val_report = cached_job["result"].get("validation_report")
-        if val_report:
-            return val_report
-
-    # Check DB
+    # Check DB first
     try:
         db_job = get_job(db, job_id)
-        if db_job and db_job.assets:
-            asset = db_job.assets[0]
-            if asset.local_staging_path:
+        if db_job:
+            if db_job.validation_reports:
+                vr = db_job.validation_reports[0]
+                return {
+                    "file_path": db_job.assets[0].local_staging_path if db_job.assets else None,
+                    "status": vr.validation_status,
+                    "is_valid": vr.validation_status in ("passed", "warnings"),
+                    "cf_conventions": vr.cf_conventions,
+                    "dimensions": vr.dimensions,
+                    "coordinates_summary": vr.coordinates_summary,
+                    "variable_stats": vr.statistics,
+                    "warnings": vr.warnings,
+                    "errors": vr.errors,
+                }
+            if db_job.assets and db_job.assets[0].local_staging_path:
                 report = validator.validate_file(
-                    asset.local_staging_path,
+                    db_job.assets[0].local_staging_path,
                     expected_dataset_id=db_job.dataset_id,
                     expected_variables=db_job.requested_variables,
                 )
                 return report.to_dict()
     except Exception as db_err:
         logger.debug(f"DB validate asset fallback: {db_err}")
+
+    # Fallback to in-memory
+    cached_job = _IN_MEMORY_JOBS.get(job_id)
+    if cached_job and "result" in cached_job:
+        val_report = cached_job["result"].get("validation_report")
+        if val_report:
+            return val_report
 
     raise HTTPException(status_code=404, detail=f"No asset found to validate for job '{job_id}'.")

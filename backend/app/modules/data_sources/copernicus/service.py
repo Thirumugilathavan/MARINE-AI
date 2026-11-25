@@ -362,10 +362,15 @@ def process_ingestion_job(
     except Exception as exc:
         logger.error(f"[Job {job_id}] Pipeline execution failed: {exc}", exc_info=True)
         if db and job:
-            job.status = "failed"
-            job.error_summary = str(exc)
-            job.completed_at = datetime.now(timezone.utc)
-            db.commit()
+            try:
+                db.rollback()
+                job.status = "failed"
+                job.error_summary = str(exc)
+                job.completed_at = datetime.now(timezone.utc)
+                db.add(job)
+                db.commit()
+            except Exception as rollback_err:
+                logger.error(f"Failed to record job failure in DB: {rollback_err}")
         raise
 
 

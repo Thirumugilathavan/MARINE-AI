@@ -57,7 +57,7 @@ The ingestion module uses an extensible dataset registry (`DATASET_REGISTRY`) th
 * **Dataset Description**: Daily mean 3D ocean potential temperature on a 0.083° (~9 km) global grid with 50 standard depth levels.
 * **Update Frequency**: Daily
 * **Horizontal Resolution**: 0.083° x 0.083° (~9 km)
-* **Vertical Range**: 50 depth levels from surface (0.5m) to ocean floor (5728m)
+* **Vertical Range**: 50 depth levels from surface (0.494m) to ocean floor (5728m)
 * **Primary Variable**:
   * **Variable Name**: `thetao`
   * **Standard Name**: `sea_water_potential_temperature`
@@ -90,7 +90,7 @@ DATASET_REGISTRY.register(
             }
         },
         spatial_bounds={"min_lon": -180.0, "max_lon": 180.0, "min_lat": -90.0, "max_lat": 90.0},
-        depth_bounds={"min_depth": 0.5, "max_depth": 5728.0},
+        depth_bounds={"min_depth": 0.494, "max_depth": 5728.0},
         time_resolution="daily",
         is_verified=True,
     )
@@ -174,22 +174,24 @@ The ingestion service uses five relational tables managed via SQLAlchemy 2.0 (co
 
 ### Table Descriptions
 * **`dataset_registry`**: Catalogs supported datasets, product IDs, verified variables, and valid ranges.
-* **`ingestion_jobs`**: Tracks the ingestion job lifecycle (`pending`, `running`, `completed`, `failed`), requested parameters, and error messages.
-* **`ingestion_assets`**: Stores details of the downloaded NetCDF asset, including file name, staging path, file size in bytes, SHA-256 hash, and optional S3 URI.
-* **`validation_reports`**: Stores the output of the `NetCDFValidator`, including CF compliance, dimensions, coordinate bounds, warnings, errors, and variable summary statistics (JSON).
+* **`ingestion_jobs`**: Tracks the ingestion job lifecycle (`pending`, `downloading`, `validating_data`, `completed`, `failed`), requested parameters, and error messages.
+* **`ingestion_assets`**: Stores details of the downloaded NetCDF asset, including file name, staging path, file size in bytes (`BigInteger`), SHA-256 hash, and optional S3 URI.
+* **`validation_reports`**: Stores the output of the `NetCDFValidator`, including CF compliance, dimensions, coordinate bounds, warnings, errors, and variable summary statistics (JSON/JSONB).
 * **`provenance_records`**: Captures complete audit lineage: source provider, product ID, dataset ID, query parameters, timestamp, tool version, and asset SHA-256 hash.
 
 ---
 
 ## 7. Storage Policy
 
-1. **Local Staging (Default)**:
+1. **Local Staging (Default - API-first policy)**:
    * Downloaded NetCDF files are placed in `dataset-staging/copernicus-downloads/`.
+   * Copernicus data that remains accessible through its upstream API is **not** duplicated into object storage by default.
    * Fast, direct local filesystem access for data processing, xarray analysis, and model feeding.
-2. **SeaweedFS S3 Archival (Optional)**:
-   * When SeaweedFS is active and configured in `.env`, assets can be archived into the `marine-raw` bucket:
-     `s3://marine-raw/copernicus/GLOBAL_ANALYSISFORECAST_PHY_001_024/{job_id}/{filename}.nc`
-   * The local staging file remains preserved.
+2. **SeaweedFS S3 Archival (Optional - `retain_in_s3 = True`)**:
+   * When permanent object archival is explicitly requested, assets are uploaded to SeaweedFS S3 in bucket `marine-raw`:
+     `s3://marine-raw/copernicus/{dataset_id}/{job_id}/{filename}.nc`
+   * The database asset record records `storage_backend = "seaweedfs_s3"`, `storage_bucket = "marine-raw"`, and `storage_key`.
+   * The local staging copy remains preserved for local cache and immediate fast validation.
 
 ---
 
@@ -213,66 +215,91 @@ curl -X POST "http://127.0.0.1:8000/api/v1/data-sources/copernicus/preview" \
   -d '{
     "dataset_id": "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m",
     "variables": ["thetao"],
-    "minimum_longitude": 88.0,
-    "maximum_longitude": 88.2,
-    "minimum_latitude": 15.0,
-    "maximum_latitude": 15.2,
-    "minimum_depth": 0.5,
-    "maximum_depth": 1.0,
-    "start_datetime": "2024-01-01T00:00:00Z",
-    "end_datetime": "2024-01-01T23:59:59Z"
+    "minimum_longitude": 85.0,
+    "maximum_longitude": 85.2,
+    "minimum_latitude": 12.0,
+    "maximum_latitude": 12.2,
+    "minimum_depth": 0.494,
+    "maximum_depth": 0.495,
+    "start_datetime": "2026-11-20T00:00:00Z",
+    "end_datetime": "2026-11-20T23:59:59Z"
   }'
 ```
 
 **Response**:
 ```json
 {
+  "request_id": "9b1d3d6e-8260-449e-ba73-514be0c27258",
   "dataset_id": "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m",
-  "estimated_size_mb": 0.013,
-  "estimated_total_points": 9,
-  "bounding_box_area_deg2": 0.04,
-  "duration_days": 1.0,
-  "status": "valid",
-  "message": "Preview valid. The request was run with the dry-run option."
+  "product_id": "GLOBAL_ANALYSISFORECAST_PHY_001_024",
+  "product_title": "Global Ocean Physics Analysis and Forecast",
+  "estimated_file_size_mb": 0.0131,
+  "estimated_data_transfer_mb": 0.0131,
+  "dry_run_status": "success",
+  "dry_run_message": "StatusMessage.DRY_RUN",
+  "selected_extent": {
+    "longitude": {"min": 85.0, "max": 85.1667, "unit": "degrees_east"},
+    "latitude": {"min": 12.0, "max": 12.1667, "unit": "degrees_north"},
+    "time": {"min": "2026-11-20T00:00:00+00:00", "max": "2026-11-20T00:00:00+00:00", "unit": "iso8601"},
+    "depth": {"min": 0.494, "max": 0.494, "unit": "m"}
+  }
 }
 ```
 
 ### 4. Create Ingestion Job (Asynchronous Background Task)
 ```bash
-curl -X POST "http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingestions?background=true" \
+curl -X POST "http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingestions" \
   -H "Content-Type: application/json" \
   -d '{
     "dataset_id": "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m",
     "variables": ["thetao"],
-    "minimum_longitude": 88.0,
-    "maximum_longitude": 88.2,
-    "minimum_latitude": 15.0,
-    "maximum_latitude": 15.2,
-    "minimum_depth": 0.5,
-    "maximum_depth": 1.0,
-    "start_datetime": "2024-01-01T00:00:00Z",
-    "end_datetime": "2024-01-01T23:59:59Z",
-    "output_filename": "bay_of_bengal_thetao_sample.nc"
+    "minimum_longitude": 85.0,
+    "maximum_longitude": 85.2,
+    "minimum_latitude": 12.0,
+    "maximum_latitude": 12.2,
+    "minimum_depth": 0.494,
+    "maximum_depth": 0.495,
+    "start_datetime": "2026-11-20T00:00:00Z",
+    "end_datetime": "2026-11-20T23:59:59Z",
+    "output_filename": "bay_of_bengal_thetao_sample.nc",
+    "retain_in_s3": false
   }'
 ```
 
 **Response**:
 ```json
 {
-  "job_id": "9b1d3d6e-8260-449e-ba73-514be0c27258",
-  "dataset_id": "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m",
-  "status": "pending",
-  "created_at": "2026-11-25T04:45:00Z",
-  "message": "Ingestion job queued as background task"
+  "job_id": "fd1db592-8735-4e35-a584-8a3917091d24",
+  "status": "queued",
+  "message": "Ingestion job submitted successfully."
 }
 ```
 
 ### 5. Check Ingestion Status & Validation
 ```bash
-curl -X GET "http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingestions/9b1d3d6e-8260-449e-ba73-514be0c27258"
+curl -X GET "http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingestions/fd1db592-8735-4e35-a584-8a3917091d24"
 ```
 
-### 6. Search Copernicus Catalogue (Preserved)
+### 6. Synchronous Ingestion (for tests & small requests)
+Append query parameter `?run_synchronously=true`:
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingestions?run_synchronously=true" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_id": "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m",
+    "variables": ["thetao"],
+    "minimum_longitude": 85.0,
+    "maximum_longitude": 85.2,
+    "minimum_latitude": 12.0,
+    "maximum_latitude": 12.2,
+    "minimum_depth": 0.494,
+    "maximum_depth": 0.495,
+    "start_datetime": "2026-11-20T00:00:00Z",
+    "end_datetime": "2026-11-20T23:59:59Z"
+  }'
+```
+
+### 7. Search Copernicus Catalogue (Preserved)
 ```bash
 curl -X GET "http://127.0.0.1:8000/api/v1/data-sources/copernicus/search?keyword=thetao&limit=5"
 ```
@@ -300,9 +327,28 @@ python -m unittest discover -v tests
 
 ---
 
-## 10. Operational Considerations & Limitations
+## 10. Local Setup & Troubleshooting
 
-1. **Copernicus Service Outages**: The Copernicus Marine API may occasionally experience maintenance or throttling. The service catches connection errors and flags the job status as `failed` with diagnostic details.
-2. **Bounding Box Size**: Requests exceeding 2,500 deg² or 365 days are rejected to protect server memory and storage.
-3. **Coordinate Orientations**: Longitudes and latitudes must satisfy `minimum <= maximum`. Cross-antimeridian queries (e.g., 170° to -170°) should be split into two queries if required.
-4. **Data Immutability**: All downloaded assets have computed SHA-256 hashes recorded at ingestion time to guarantee provenance and detect tampering.
+### Infrastructure Setup
+The pipeline connects to:
+- **PostgreSQL 17 with PostGIS 3.5**: Container `sstrix-postgres` on `127.0.0.1:5432`
+- **SeaweedFS S3 Object Store**: Container `sstrix-seaweedfs` on `127.0.0.1:8333`
+
+If containers are stopped:
+```bash
+docker start sstrix-postgres
+docker start sstrix-seaweedfs
+```
+
+### Common Issues & Remedies
+1. **Authentication Error / Missing Credentials**:
+   * Run `copernicusmarine login` once to store credentials in `~/.copernicusmarine/`.
+2. **Connection Timed Out to Copernicus**:
+   * Verify your internet connection. Upstream Copernicus API maintenance is reported with HTTP 502.
+3. **Database Disconnected**:
+   * Check container status with `docker ps`. Verify port 5432 is bound to `127.0.0.1`.
+4. **S3 Connection Refused**:
+   * Verify container `sstrix-seaweedfs` is running and port 8333 is open.
+5. **Bounding Box Error**:
+   * Ensure `minimum_longitude <= maximum_longitude` and `minimum_latitude <= maximum_latitude`.
+   * Keep bounding box area below `2,500 deg²`.

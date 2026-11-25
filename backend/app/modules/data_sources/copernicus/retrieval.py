@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 import re
 from typing import Dict, List, Optional, Any
+import uuid
 
 import copernicusmarine
 
@@ -87,7 +88,8 @@ class CopernicusRetrievalService:
         if staging_dir:
             self.staging_dir = Path(staging_dir)
         else:
-            self.staging_dir = Path.cwd() / "dataset-staging" / "copernicus"
+            project_root = Path(__file__).resolve().parents[5]
+            self.staging_dir = project_root / "dataset-staging" / "copernicus-downloads"
         self.staging_dir.mkdir(parents=True, exist_ok=True)
 
     def validate_parameters(self, params: RetrievalParameters) -> RegisteredDataset:
@@ -156,12 +158,17 @@ class CopernicusRetrievalService:
 
         return dataset
 
-    def preview(self, params: RetrievalParameters, request_id: str) -> PreviewResponse:
+    def preview(
+        self,
+        params: RetrievalParameters,
+        request_id: Optional[str] = None,
+    ) -> PreviewResponse:
         """
         Executes a dry-run subset query against Copernicus Marine to estimate size and coordinates.
         Does not download any data file.
         """
         dataset = self.validate_parameters(params)
+        req_id = request_id or str(uuid.uuid4())
 
         try:
             dry_run_res = copernicusmarine.subset(
@@ -196,7 +203,7 @@ class CopernicusRetrievalService:
             data_transfer_mb = float(getattr(dry_run_res, "data_transfer_size", 0.0) or 0.0)
 
             return PreviewResponse(
-                request_id=request_id,
+                request_id=req_id,
                 dataset_id=params.dataset_id,
                 product_id=dataset.product_id,
                 product_title=dataset.product_title,
@@ -225,6 +232,7 @@ class CopernicusRetrievalService:
         params: RetrievalParameters,
         job_id: str,
         custom_output_filename: Optional[str] = None,
+        output_directory: Optional[Path] = None,
     ) -> Path:
         """
         Executes actual subset download using copernicusmarine.subset().
@@ -232,7 +240,7 @@ class CopernicusRetrievalService:
         """
         dataset = self.validate_parameters(params)
 
-        job_dir = self.staging_dir / job_id
+        job_dir = output_directory or (self.staging_dir / job_id)
         job_dir.mkdir(parents=True, exist_ok=True)
 
         filename = None
