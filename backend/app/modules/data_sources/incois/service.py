@@ -11,6 +11,7 @@ import hashlib
 import logging
 from pathlib import Path
 import re
+import time
 from typing import Dict, List, Optional, Any
 import urllib.parse
 import uuid
@@ -19,6 +20,7 @@ import httpx
 import numpy as np
 import xarray as xr
 
+from app.core.config import settings
 from app.modules.data_sources.base import (
     BaseMarineProvider,
     ProviderMetadata,
@@ -161,10 +163,34 @@ class INCOISMarineProvider(BaseMarineProvider):
     INCOIS Data Provider connecting to INCOIS ERDDAP for Indian Ocean datasets.
     """
 
-    def __init__(self, base_url: str = INCOIS_BASE_URL, timeout_seconds: float = 60.0, verify_ssl: bool = False):
+    def __init__(
+        self,
+        base_url: str = INCOIS_BASE_URL,
+        timeout_seconds: float = 60.0,
+        verify_ssl: Optional[bool] = None,
+        ssl_ca_bundle: Optional[str] = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
-        self.verify_ssl = verify_ssl
+
+        # Production Default: SSL verification is strictly enabled (True)
+        if ssl_ca_bundle:
+            self.verify_ssl: Any = ssl_ca_bundle
+        elif verify_ssl is not None:
+            self.verify_ssl = verify_ssl
+        elif hasattr(settings, "incois_ssl_ca_bundle") and settings.incois_ssl_ca_bundle:
+            self.verify_ssl = settings.incois_ssl_ca_bundle
+        elif hasattr(settings, "incois_verify_ssl"):
+            self.verify_ssl = settings.incois_verify_ssl
+        else:
+            self.verify_ssl = True
+
+        if self.verify_ssl is False:
+            logger.warning(
+                "SECURITY WARNING: INCOIS SSL certificate verification is explicitly disabled. "
+                "This override is strictly restricted to local development environments lacking "
+                "the Indian CCA/NIC root certificate and must NEVER be used in production."
+            )
 
     def metadata(self) -> ProviderMetadata:
         return ProviderMetadata(
@@ -363,21 +389,54 @@ class INCOISMarineProvider(BaseMarineProvider):
         query_url = self._build_griddap_url(validated)
         logger.info("Executing INCOIS ERDDAP query: %s", query_url)
 
+        max_retries = 3
+        backoff_seconds = 2.0
+        response = None
+        last_error = None
+
         try:
             with httpx.Client(timeout=self.timeout_seconds, follow_redirects=True, verify=self.verify_ssl) as client:
-                response = client.get(query_url)
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        logger.info(f"[Job {jid}] INCOIS attempt {attempt}/{max_retries} requesting: {query_url}")
+                        response = client.get(query_url)
 
-                if response.status_code == 404:
+                        if response.status_code == 200:
+                            break
+                        elif response.status_code == 404:
+                            raise RetrievalError(
+                                f"No data found matching criteria in INCOIS dataset '{validated.dataset_id}'. "
+                                f"Extent: lat [{validated.minimum_latitude}, {validated.maximum_latitude}], "
+                                f"lon [{validated.minimum_longitude}, {validated.maximum_longitude}], "
+                                f"time [{validated.start_datetime}, {validated.end_datetime}]."
+                            )
+                        elif response.status_code in (502, 503, 504) and attempt < max_retries:
+                            logger.warning(
+                                f"[Job {jid}] INCOIS ERDDAP returned HTTP {response.status_code} (attempt {attempt}/{max_retries}). "
+                                f"Retrying in {backoff_seconds}s..."
+                            )
+                            time.sleep(backoff_seconds)
+                            backoff_seconds *= 2
+                        else:
+                            err_msg = response.text[:400]
+                            raise RetrievalError(
+                                f"INCOIS ERDDAP request failed with HTTP {response.status_code}: {err_msg}"
+                            )
+                    except (httpx.TransportError, httpx.TimeoutException) as exc:
+                        last_error = exc
+                        if attempt < max_retries:
+                            logger.warning(
+                                f"[Job {jid}] INCOIS network error: {exc}. Retrying in {backoff_seconds}s..."
+                            )
+                            time.sleep(backoff_seconds)
+                            backoff_seconds *= 2
+                        else:
+                            raise RetrievalError(f"Network error querying INCOIS ERDDAP: {exc}") from exc
+
+                if response is None or response.status_code != 200:
                     raise RetrievalError(
-                        f"No data found matching criteria in INCOIS dataset '{validated.dataset_id}'. "
-                        f"Extent: lat [{validated.minimum_latitude}, {validated.maximum_latitude}], "
-                        f"lon [{validated.minimum_longitude}, {validated.maximum_longitude}], "
-                        f"time [{validated.start_datetime}, {validated.end_datetime}]."
-                    )
-                elif response.status_code != 200:
-                    err_msg = response.text[:400]
-                    raise RetrievalError(
-                        f"INCOIS ERDDAP request failed with HTTP {response.status_code}: {err_msg}"
+                        f"INCOIS ERDDAP request failed after {max_retries} attempts: "
+                        f"{last_error or (response.text[:300] if response else 'No response')}"
                     )
 
                 content = response.content

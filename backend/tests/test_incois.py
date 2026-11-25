@@ -23,6 +23,15 @@ class TestINCOISProvider(unittest.TestCase):
         self.assertFalse(meta.authentication_required)
         self.assertEqual(meta.access_method, "erddap_griddap")
 
+    def test_ssl_verification_default(self):
+        # Security Requirement: SSL verification must be enabled by default (True)
+        default_provider = INCOISMarineProvider()
+        self.assertTrue(default_provider.verify_ssl)
+
+        # Configurable override for isolated development
+        dev_provider = INCOISMarineProvider(verify_ssl=False)
+        self.assertFalse(dev_provider.verify_ssl)
+
     def test_list_and_get_dataset(self):
         datasets = self.provider.list_datasets()
         self.assertGreater(len(datasets), 0)

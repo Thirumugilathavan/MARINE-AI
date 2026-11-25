@@ -482,8 +482,8 @@ class ArgoMarineProvider(BaseMarineProvider):
             coords_valid = has_lat and has_lon and has_time
 
             total_rows = 0
-            if "row" in ds.dims:
-                total_rows = int(ds.dims["row"])
+            if "row" in ds.sizes:
+                total_rows = int(ds.sizes["row"])
             elif has_lat:
                 total_rows = len(ds["latitude"])
 
@@ -589,6 +589,12 @@ class ArgoMarineProvider(BaseMarineProvider):
                         if flag_count > 0:
                             qc_counts[f"flag_{flag_val}"] = flag_count
 
+                    bad_qc_count = qc_counts.get("flag_3", 0) + qc_counts.get("flag_4", 0)
+                    if bad_qc_count > 0:
+                        warnings.append(
+                            f"Variable '{var_name}' contains {bad_qc_count} questionable/bad measurements (QC flags 3 or 4)."
+                        )
+
                 var_summaries[var_name] = VariableStatsSummary(
                     variable_name=var_name,
                     standard_name=vmeta.get("standard_name"),
@@ -610,7 +616,15 @@ class ArgoMarineProvider(BaseMarineProvider):
                 p_vals = ds["platform_number"].values
                 platforms_count = len(np.unique(p_vals))
 
-            # Data mode breakdown
+            # Profile relationships (unique combinations of platform_number and cycle_number)
+            unique_profiles_count = 0
+            if "platform_number" in ds.variables and "cycle_number" in ds.variables:
+                p_nums = ds["platform_number"].values
+                c_nums = ds["cycle_number"].values
+                profile_ids = set(zip(p_nums, c_nums))
+                unique_profiles_count = len(profile_ids)
+
+            # Data mode breakdown (R=Real-time, A=Adjusted, D=Delayed-mode)
             data_modes: Dict[str, int] = {}
             if "data_mode" in ds.variables:
                 dm_vals = ds["data_mode"].values
@@ -622,7 +636,7 @@ class ArgoMarineProvider(BaseMarineProvider):
             is_valid = coords_valid and spatial_valid and temporal_valid and (len(errors) == 0)
             status = "VALID" if is_valid and not warnings else ("VALID_WITH_WARNINGS" if is_valid else "FAILED")
 
-            dimensions = {k: int(v) for k, v in ds.dims.items()}
+            dimensions = {k: int(v) for k, v in ds.sizes.items()}
 
             return UnifiedValidationResult(
                 file_path=str(file_path),
@@ -654,6 +668,7 @@ class ArgoMarineProvider(BaseMarineProvider):
                 additional_metadata={
                     "total_profiles_rows": total_rows,
                     "unique_wmo_platforms_count": platforms_count,
+                    "unique_vertical_profiles_count": unique_profiles_count,
                     "data_modes_distribution": data_modes,
                 },
             )

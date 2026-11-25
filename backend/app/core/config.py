@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     seaweedfs_bucket_models: str = "marine-models"
     seaweedfs_bucket_research: str = "marine-research"
 
+    # INCOIS Provider Configuration
+    incois_verify_ssl: bool = True
+    incois_ssl_ca_bundle: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=(_BACKEND_ENV_FILE, ".env"),
         env_file_encoding="utf-8",

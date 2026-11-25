@@ -219,6 +219,7 @@ class UnifiedProvenanceInfo:
     validation_status: Optional[str] = None
     licence_information: Optional[str] = None
     citation: Optional[str] = None
+    provider_doi: Optional[str] = None
     additional_provenance: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
@@ -228,6 +229,10 @@ class UnifiedProvenanceInfo:
             self.provider_name = self.provider
         if self.licence_information and not self.source_licence:
             self.source_licence = self.licence_information
+        if self.provider_doi and not self.citation:
+            self.citation = self.provider_doi
+        elif self.citation and not self.provider_doi:
+            self.provider_doi = self.citation
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -10,6 +10,7 @@ import hashlib
 import logging
 from pathlib import Path
 import re
+import time
 from typing import Dict, List, Optional, Any
 import urllib.parse
 import uuid
@@ -92,7 +93,59 @@ NOAA_VERIFIED_DATASETS: Dict[str, ProviderDatasetMeta] = {
         source_documentation="https://www.ncei.noaa.gov/products/optimum-interpolation-sst",
         licence_information="US Government Open Data / Public Domain",
         verification_status="verified",
-    )
+    ),
+    "ncdcOisst21Agg": ProviderDatasetMeta(
+        provider_id="noaa",
+        dataset_id="ncdcOisst21Agg",
+        product_id="NOAA_OISST_V2_1_FINAL",
+        product_title="NOAA 1/4° Daily Optimum Interpolation Sea Surface Temperature (OISST) v2.1 (Canonical)",
+        dataset_description=(
+            "NOAA 0.25-degree daily Optimum Interpolation Sea Surface Temperature (OISST) v2.1 "
+            "constructed by combining observations from satellites (AVHRR) and in-situ platforms (ships, buoys)."
+        ),
+        available_variables=["sst", "anom", "err", "ice"],
+        variable_metadata={
+            "sst": {
+                "standard_name": "sea_surface_temperature",
+                "units": "degree_C",
+                "long_name": "Daily Sea Surface Temperature",
+                "valid_min": -3.0,
+                "valid_max": 45.0,
+            },
+            "anom": {
+                "standard_name": "sea_surface_temperature_anomaly",
+                "units": "degree_C",
+                "long_name": "Daily Sea Surface Temperature Anomaly",
+                "valid_min": -15.0,
+                "valid_max": 15.0,
+            },
+            "err": {
+                "standard_name": "sea_surface_temperature_error",
+                "units": "degree_C",
+                "long_name": "Estimated Error of Daily Sea Surface Temperature",
+                "valid_min": 0.0,
+                "valid_max": 10.0,
+            },
+            "ice": {
+                "standard_name": "sea_ice_area_fraction",
+                "units": "1",
+                "long_name": "Daily Sea Ice Concentration",
+                "valid_min": 0.0,
+                "valid_max": 1.0,
+            },
+        },
+        temporal_resolution="daily",
+        spatial_resolution="0.25 degree (~27 km)",
+        data_type="satellite_observation_analysis",
+        spatial_coverage={"min_lon": -180.0, "max_lon": 180.0, "min_lat": -90.0, "max_lat": 90.0},
+        depth_levels_count=1,
+        depth_min=0.0,
+        depth_max=0.0,
+        time_coverage_start="1981-09-01T12:00:00Z",
+        source_documentation="https://www.ncei.noaa.gov/products/optimum-interpolation-sst",
+        licence_information="US Government Open Data / Public Domain",
+        verification_status="verified",
+    ),
 }
 
 
@@ -293,6 +346,11 @@ class NOAAMarineProvider(BaseMarineProvider):
             clean_name += ".nc"
         target_path = job_dir / clean_name
 
+        # Resolve remote ERDDAP dataset ID (support canonical and legacy alias)
+        remote_dataset_id = params.dataset_id
+        if remote_dataset_id == "ncdcOisst21Agg_LonPM180":
+            remote_dataset_id = "ncdcOisst21Agg"
+
         # Construct ERDDAP griddap query
         # Format: dataset.nc?var1[(start):(end)][(zlev)][(min_lat):(max_lat)][(min_lon):(max_lon)],var2...
         var_clauses = []
@@ -309,16 +367,53 @@ class NOAAMarineProvider(BaseMarineProvider):
             var_clauses.append(encoded_clause)
 
         query_str = ",".join(var_clauses)
-        download_url = f"{self.base_url}/griddap/{params.dataset_id}.nc?{query_str}"
+        download_url = f"{self.base_url}/griddap/{remote_dataset_id}.nc?{query_str}"
         logger.info(f"[Job {job_id}] Requesting NOAA subset from: {download_url}")
+
+        max_retries = 3
+        backoff_seconds = 2.0
+        resp = None
+        last_error = None
 
         try:
             with httpx.Client(timeout=self.timeout, follow_redirects=True, verify=False) as client:
-                resp = client.get(download_url)
-                if resp.status_code != 200:
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        logger.info(f"[Job {job_id}] NOAA attempt {attempt}/{max_retries} requesting: {download_url}")
+                        resp = client.get(download_url)
+                        if resp.status_code == 200:
+                            break
+                        elif resp.status_code in (502, 503, 504) and attempt < max_retries:
+                            logger.warning(
+                                f"[Job {job_id}] NOAA ERDDAP returned HTTP {resp.status_code} (attempt {attempt}/{max_retries}). "
+                                f"Retrying in {backoff_seconds}s..."
+                            )
+                            time.sleep(backoff_seconds)
+                            backoff_seconds *= 2
+                        else:
+                            raise RetrievalError(
+                                f"NOAA ERDDAP request failed with HTTP {resp.status_code}: {resp.text[:300]}"
+                            )
+                    except (httpx.TransportError, httpx.TimeoutException) as t_err:
+                        last_error = t_err
+                        if attempt < max_retries:
+                            logger.warning(
+                                f"[Job {job_id}] NOAA ERDDAP transport error '{t_err}' (attempt {attempt}/{max_retries}). "
+                                f"Retrying in {backoff_seconds}s..."
+                            )
+                            time.sleep(backoff_seconds)
+                            backoff_seconds *= 2
+                        else:
+                            raise RetrievalError(
+                                f"NOAA ERDDAP transport error after {max_retries} attempts: {t_err}"
+                            ) from t_err
+
+                if resp is None or resp.status_code != 200:
                     raise RetrievalError(
-                        f"NOAA ERDDAP request failed with HTTP {resp.status_code}: {resp.text[:300]}"
+                        f"NOAA ERDDAP request failed after {max_retries} attempts: "
+                        f"{last_error or (resp.text[:300] if resp else 'No response')}"
                     )
+
                 target_path.write_bytes(resp.content)
 
             file_size = target_path.stat().st_size
@@ -510,6 +605,7 @@ class NOAAMarineProvider(BaseMarineProvider):
             units=units_dict,
             processing_method="noaa_erddap_griddap_rest",
             source_licence=dataset.licence_information,
+            provider_doi=dataset.source_documentation or "https://doi.org/10.25921/re9p-pt57",
             toolbox_version="MARINE-AI-Unified-1.0",
             sha256_checksum=r_res.sha256_checksum if hasattr(r_res, "sha256_checksum") else "",
             validation_report_id=None,
