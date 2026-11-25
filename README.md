@@ -48,23 +48,36 @@ D:\SSTRIX_MARINE_PLATFORM\
 │   ├── app/
 │   │   ├── api/
 │   │   │   └── routes/
-│   │   │       └── marine_data.py          # Marine data endpoints
+│   │   │       └── marine_data.py          # Marine data endpoints (search, preview, ingest)
 │   │   ├── core/
 │   │   │   └── config.py                   # Pydantic Settings & env configuration
 │   │   ├── database/
-│   │   │   └── connection.py               # SQLAlchemy PostgreSQL/PostGIS engine
+│   │   │   ├── connection.py               # SQLAlchemy PostgreSQL/PostGIS engine
+│   │   │   ├── init_db.py                  # Safe schema initialization
+│   │   │   └── models.py                   # ORM models (jobs, assets, validation, provenance)
 │   │   ├── modules/
 │   │   │   ├── catalogue/                  # Metadata catalogue modules
 │   │   │   ├── data_sources/
-│   │   │   │   └── copernicus/
-│   │   │   │       └── service.py          # Copernicus Marine describe() service
+│   │   │   │   └── copernicus/             # Copernicus Marine pipeline modules
+│   │   │   │       ├── dataset_registry.py # Registry of verified Copernicus datasets
+│   │   │   │       ├── exceptions.py       # Domain-specific exceptions
+│   │   │   │       ├── metadata.py         # SHA-256 and NetCDF provenance extractors
+│   │   │   │       ├── retrieval.py        # Bounded subset retrieval service
+│   │   │   │       ├── schemas.py          # Pydantic request and response schemas
+│   │   │   │       ├── service.py          # Ingestion orchestration & catalogue search
+│   │   │   │       └── validation.py       # NetCDF xarray CF-1.8 & statistical validator
 │   │   │   ├── ingestion/                  # Ocean data ingestion pipelines
 │   │   │   └── validation/                 # Quality indicators & validation
 │   │   ├── storage/
 │   │   │   └── s3_client.py                # Boto3 client for SeaweedFS S3
 │   │   └── main.py                         # FastAPI application entrypoint
 │   ├── tests/
-│   │   └── test_api.py                     # API test suite (unittest/pytest)
+│   │   ├── test_api.py                     # API root & health test suite
+│   │   ├── test_copernicus_api.py          # Copernicus REST API endpoints test suite
+│   │   ├── test_database.py                # Relational models persistence test suite
+│   │   ├── test_dataset_registry.py        # Dataset registry test suite
+│   │   ├── test_netcdf_validation.py       # NetCDF validator & fixture test suite
+│   │   └── test_retrieval.py               # Bounded retrieval & preview test suite
 │   ├── workers/                            # Async background task workers
 │   ├── .env.example                        # Backend environment template
 │   ├── .gitignore                          # Backend gitignore rules
@@ -81,6 +94,7 @@ D:\SSTRIX_MARINE_PLATFORM\
 ├── .env.example                            # Root environment template
 ├── .gitignore                              # Root security & ignore configuration
 ├── CONTRIBUTING.md                         # Teammate collaboration & branching guide
+├── COPERNICUS_INGESTION_GUIDE.md           # Copernicus ingestion architectural guide
 ├── create_buckets.py                       # Provision SeaweedFS storage buckets
 ├── storage_test.py                         # SeaweedFS upload/download verification
 └── test_s3.py                              # S3 connectivity check script
@@ -191,7 +205,13 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 - **ReDoc UI**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
 - **Root**: `GET http://127.0.0.1:8000/`
 - **Health Check**: `GET http://127.0.0.1:8000/health` (checks PostgreSQL and SeaweedFS)
-- **Copernicus Search**: `GET http://127.0.0.1:8000/api/v1/data-sources/copernicus/search?keyword=salinity&limit=10`
+- **Copernicus Search**: `GET http://127.0.0.1:8000/api/v1/data-sources/copernicus/search?keyword=thetao&limit=10`
+- **Copernicus Datasets**: `GET http://127.0.0.1:8000/api/v1/data-sources/copernicus/datasets`
+- **Copernicus Dataset Detail**: `GET http://127.0.0.1:8000/api/v1/data-sources/copernicus/datasets/{dataset_id}`
+- **Copernicus Preview**: `POST http://127.0.0.1:8000/api/v1/data-sources/copernicus/preview`
+- **Copernicus Ingestion**: `POST http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingestions`
+- **Copernicus Ingestion Status**: `GET http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingestions/{job_id}`
+- **Copernicus Ingestion Validation**: `POST http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingestions/{job_id}/validate`
 
 ---
 
@@ -199,13 +219,19 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ### Verified and Implemented
 - **FastAPI Core Architecture**: Modular application structure, settings configuration, and health endpoints.
-- **PostgreSQL / PostGIS Engine**: Connection pooling, connection test, session management.
+- **PostgreSQL / PostGIS Engine**: Connection pooling, connection test, session management, and relational ORM models.
 - **SeaweedFS S3 Integration**: Boto3 client, bucket listing health check, bucket provisioning (`create_buckets.py`), and read/write storage tests (`storage_test.py`).
 - **Copernicus Marine Catalogue Discovery**:
   - Direct integration via `copernicusmarine.describe()`.
   - Endpoint: `GET /api/v1/data-sources/copernicus/search`.
   - Supports keyword queries (e.g., `thetao`, `salinity`, `chlorophyll`).
-  - *Note: This provides catalogue product discovery and metadata exploration. Ingestion and extraction of raw measurement data arrays are scheduled for subsequent pipeline milestones.*
+- **Copernicus Marine Data Ingestion Pipeline**:
+  - **Dataset Registry**: Extensible registry supporting verified primary product `GLOBAL_ANALYSISFORECAST_PHY_001_024` and dataset `cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m` (variable `thetao`, 50 depth levels, daily resolution).
+  - **Bounded Retrieval & Dry-Run Preview**: Parameter validation, path traversal prevention, coordinate bounds checking, and dry-run subset size estimation.
+  - **NetCDF Validation**: CF-1.8 convention checks, coordinate bounds verification, NaN accounting, physical bounds validation, and summary statistics calculation.
+  - **Relational Persistence**: Models for `dataset_registry`, `ingestion_jobs`, `ingestion_assets`, `validation_reports`, and `provenance_records`.
+  - **Storage & Lineage**: Local staging with SHA-256 data immutability checksums and optional S3/SeaweedFS archival.
+  - For full architectural specifications, see [COPERNICUS_INGESTION_GUIDE.md](COPERNICUS_INGESTION_GUIDE.md).
 
 ### In Progress / Upcoming (Dedicated Branches)
 - **NOAA & Argo Connectors** (`feature/noaa-argo-connectors`):
