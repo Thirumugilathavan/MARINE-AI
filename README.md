@@ -12,30 +12,44 @@ Key capabilities:
 - **FastAPI Core**: High-performance asynchronous REST API framework.
 - **Spatio-temporal Database**: PostgreSQL 17 with PostGIS 3.5 for indexing ocean geometries, tracks, and spatial points.
 - **S3-Compatible Object Store**: Local SeaweedFS distributed object store providing 7 dedicated marine storage buckets.
-- **Marine Data Provider Integrations**: Copernicus Marine Service catalogue search, with NOAA, INCOIS, and Argo connectors in active development.
+- **Unified Multi-Provider Ingestion**: Integrated production connectors for Copernicus Marine Service, NOAA CoastWatch ERDDAP, Euro-Argo GDAC ERDDAP, and INCOIS ERDDAP. Detailed in [UNIFIED_INGESTION_GUIDE.md](file:///D:/SSTRIX_MARINE_PLATFORM/UNIFIED_INGESTION_GUIDE.md).
 
 ---
 
 ## 2. Platform Architecture
 
 ```
-+-------------------------------------------------------------------------+
-|                        FastAPI Application Layer                        |
-|                                                                         |
-|  +--------------------+  +----------------------+  +-----------------+  |
-|  |  Health & Status   |  | Copernicus Discovery |  | Provider Routes |  |
-|  |   / & /health      |  |  /api/v1/data-sources|  |   (In Progress) |  |
-|  +--------------------+  +----------------------+  +-----------------+  |
-+-------------------+-----------------------------------+-----------------+
-                    |                                   |
-                    v                                   v
-+------------------------------------+ +----------------------------------+
-|      PostgreSQL / PostGIS          | |      SeaweedFS S3 Storage        |
-|  - Spatial tables & ocean metrics  | |  - marine-raw                    |
-|  - Ingestion provenance & logs     | |  - marine-curated                |
-|  - Database: sstrix_marine         | |  - marine-derived                |
-|  - Port: 5432                      | |  - marine-media, edna, models... |
-+------------------------------------+ +----------------------------------+
++----------------------------------------------------------------------------------------------------+
+|                                    FastAPI Application Layer                                       |
+|                                                                                                    |
+|    /api/v1/providers/*                  /api/v1/ingestions/*         /api/v1/data-sources/copernicus|
+|    (Multi-Provider Discovery & Preview) (Job Lifecycle, S3, Provenance)(Preserved Copernicus API)  |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                                   v
++----------------------------------------------------------------------------------------------------+
+|                                   Unified Ingestion Orchestrator                                   |
+|  - Parameter Validation     - SHA-256 Hash Generation      - Scientific CF-1.8 Validation          |
+|  - Dry-Run Size Estimator   - SeaweedFS S3 Persistence     - Provenance & Citation Lineage         |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                                   v
++----------------------------------------------------------------------------------------------------+
+|                             Provider Registry (BaseMarineProvider ABC)                             |
+|  +--------------------+  +--------------------+  +--------------------+  +--------------------+    |
+|  |     Copernicus     |  |       NOAA         |  |        Argo        |  |       INCOIS       |    |
+|  |  (CopernicusToolbox|  |   (CoastWatch      |  |    (Euro-Argo      |  |   (MoES ERDDAP     |    |
+|  |     Subset API)    |  |  Griddap REST)     |  |  Tabledap REST)    |  |   Griddap REST)    |    |
+|  +--------------------+  +--------------------+  +--------------------+  +--------------------+    |
++--------------------------------------------------+-------------------------------------------------+
+                          |                                                  |
+                          v                                                  v
++--------------------------------------------------+  +----------------------------------------------+
+|             PostgreSQL 17 / PostGIS              |  |         SeaweedFS S3 Storage Buckets         |
+|  - data_providers         - validation_reports   |  |  - marine-raw (persisted NetCDF assets)      |
+|  - dataset_registry       - provenance_records   |  |  - marine-curated, marine-derived, etc.      |
+|  - ingestion_jobs         - ingestion_assets     |  |                                              |
++--------------------------------------------------+  +----------------------------------------------+
 ```
 
 ---

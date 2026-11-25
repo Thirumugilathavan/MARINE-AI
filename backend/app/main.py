@@ -8,6 +8,10 @@ from app.database.connection import engine
 from app.database.init_db import init_db
 from app.storage.s3_client import test_storage_connection
 from app.api.routes.marine_data import router as marine_data_router
+from app.api.routes.unified_providers import (
+    providers_router,
+    ingestions_router,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,8 @@ app = FastAPI(
 
 # Register API routers
 app.include_router(marine_data_router)
+app.include_router(providers_router)
+app.include_router(ingestions_router)
 
 
 @app.get("/")

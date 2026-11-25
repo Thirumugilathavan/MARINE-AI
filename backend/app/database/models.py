@@ -40,6 +40,28 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class DataProviderModel(Base):
+    """
+    Stores registered marine data providers and their operational metadata.
+    """
+    __tablename__ = "data_providers"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # provider_id e.g. "copernicus", "noaa", "argo", "incois"
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    organization: Mapped[str] = mapped_column(String(256), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    documentation_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    access_method: Mapped[str] = mapped_column(String(64), nullable=False)
+    authentication_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auth_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="operational")
+    supported_formats: Mapped[List[str]] = mapped_column(JSON_TYPE, nullable=False, default=list)
+    rate_limits_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    licence_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
+
+
 class DatasetRegistryModel(Base):
     """
     Stores verified provider dataset definitions and metadata.
@@ -169,7 +191,7 @@ class ProvenanceRecordModel(Base):
     dataset_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     dataset_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     dataset_part: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    provider_doi: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    provider_doi: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     retrieval_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     requested_date_range: Mapped[Dict[str, Any]] = mapped_column(JSON_TYPE, nullable=False, default=dict)
     actual_data_date_range: Mapped[Dict[str, Any]] = mapped_column(JSON_TYPE, nullable=False, default=dict)
