@@ -192,6 +192,10 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 - **Root**: `GET http://127.0.0.1:8000/`
 - **Health Check**: `GET http://127.0.0.1:8000/health` (checks PostgreSQL and SeaweedFS)
 - **Copernicus Search**: `GET http://127.0.0.1:8000/api/v1/data-sources/copernicus/search?keyword=salinity&limit=10`
+- **Copernicus Datasets**: `GET http://127.0.0.1:8000/api/v1/data-sources/copernicus/datasets`
+- **Copernicus Indian Ocean Region**: `GET http://127.0.0.1:8000/api/v1/data-sources/copernicus/region`
+- **Copernicus Validate Parameters**: `POST http://127.0.0.1:8000/api/v1/data-sources/copernicus/validate`
+- **Copernicus Ingestion Pipeline**: `POST http://127.0.0.1:8000/api/v1/data-sources/copernicus/ingest`
 
 ---
 
@@ -204,8 +208,16 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 - **Copernicus Marine Catalogue Discovery**:
   - Direct integration via `copernicusmarine.describe()`.
   - Endpoint: `GET /api/v1/data-sources/copernicus/search`.
-  - Supports keyword queries (e.g., `thetao`, `salinity`, `chlorophyll`).
-  - *Note: This provides catalogue product discovery and metadata exploration. Ingestion and extraction of raw measurement data arrays are scheduled for subsequent pipeline milestones.*
+- **Copernicus NRT & Historical Bounded Ingestion Pipeline**:
+  - Live catalogue verified dataset IDs for 3 temporal cadences:
+    - **NRT 6-Hourly**: `cmems_mod_glo_phy-thetao_anfc_0.083deg_PT6H-i`, `cmems_mod_glo_phy-so_anfc_0.083deg_PT6H-i`, `cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i`
+    - **NRT Daily**: `cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m`, `cmems_mod_glo_phy-so_anfc_0.083deg_P1D-m`, `cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m`
+    - **Historical Daily**: `cmems_mod_glo_phy_my_0.083deg_P1D-m`
+  - 4 oceanographic variables supported: `thetao` (temperature), `so` (salinity), `uo` (zonal velocity), `vo` (meridional velocity).
+  - Indian Ocean spatial bounding box (30°E to 120°E, -30°S to 30°N) with strict validation preventing unbounded global downloads.
+  - Physical sanity checks, NaN / land-mask auditing, and quality indicators.
+  - SHA-256 provenance tracking and bounded storage in SeaweedFS S3 bucket `marine-raw`.
+  - Detailed technical documentation: [project-documents/copernicus-ingestion.md](project-documents/copernicus-ingestion.md).
 
 ### In Progress / Upcoming (Dedicated Branches)
 - **NOAA & Argo Connectors** (`feature/noaa-argo-connectors`):

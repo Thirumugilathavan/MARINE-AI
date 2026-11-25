@@ -19,14 +19,18 @@ class TestMarineApi(unittest.TestCase):
         self.assertEqual(data["message"], "Marine AI Platform API is running")
         self.assertEqual(data["version"], "0.1.0")
 
-    def test_health_check_endpoint(self):
+    @patch("app.main.test_storage_connection")
+    @patch("app.main.engine.connect")
+    def test_health_check_endpoint(self, mock_db, mock_storage):
+        mock_db.return_value.__enter__.return_value.execute.return_value = True
+        mock_storage.return_value = ["marine-raw"]
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIn("status", data)
+        self.assertEqual(data["status"], "healthy")
         self.assertIn("services", data)
-        self.assertIn("postgresql", data["services"])
-        self.assertIn("seaweedfs", data["services"])
+        self.assertEqual(data["services"]["postgresql"], "healthy")
+        self.assertEqual(data["services"]["seaweedfs"], "healthy")
 
     def test_copernicus_search_validation_missing_keyword(self):
         response = self.client.get("/api/v1/data-sources/copernicus/search")

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     seaweedfs_bucket_models: str = "marine-models"
     seaweedfs_bucket_research: str = "marine-research"
 
+    # Copernicus Marine Service Credentials (Optional)
+    copernicus_marine_username: str | None = None
+    copernicus_marine_password: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
