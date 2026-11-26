@@ -21,6 +21,7 @@ from app.modules.data_sources.copernicus_adapter import CopernicusMarineProvider
 from app.modules.data_sources.noaa.service import NOAAMarineProvider
 from app.modules.data_sources.argo.service import ArgoMarineProvider
 from app.modules.data_sources.incois.service import INCOISMarineProvider
+from app.modules.data_sources.gebco.service import GEBCOBathymetryProvider
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,11 @@ class ProviderRegistry:
             self.register(INCOISMarineProvider())
         except Exception as exc:
             logger.warning(f"Could not register INCOIS provider: {exc}")
+
+        try:
+            self.register(GEBCOBathymetryProvider())
+        except Exception as exc:
+            logger.warning(f"Could not register GEBCO provider: {exc}")
 
     def register(self, provider: BaseMarineProvider) -> None:
         """Registers a provider instance."""
