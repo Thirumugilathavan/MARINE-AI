@@ -155,6 +155,55 @@ INCOIS_VERIFIED_DATASETS: Dict[str, ProviderDatasetMeta] = {
         licence_information="MoES India Open Data Policy",
         verification_status="verified",
     ),
+    "incois_oceansat2_datasets": ProviderDatasetMeta(
+        provider_id="incois",
+        dataset_id="incois_oceansat2_datasets",
+        product_id="INCOIS_OCEANSAT2_OCM_CHL_TSM",
+        product_title="INCOIS Oceansat-2 OCM Chlorophyll-a and Total Suspended Matter",
+        dataset_description=(
+            "Gridded ocean colour products from Oceansat-2 Ocean Colour Monitor (OCM) "
+            "providing chlorophyll-a concentration and total suspended matter (TSM) over the North Indian Ocean."
+        ),
+        available_variables=[
+            "CHL",
+            "TSM",
+            "KD490",
+        ],
+        variable_metadata={
+            "CHL": {
+                "standard_name": "concentration_of_chlorophyll_in_sea_water",
+                "units": "mg/m3",
+                "long_name": "Chlorophyll-a Concentration",
+                "valid_min": 0.001,
+                "valid_max": 100.0,
+            },
+            "TSM": {
+                "standard_name": "concentration_of_suspended_matter_in_sea_water",
+                "units": "mg/L",
+                "long_name": "Total Suspended Matter",
+                "valid_min": 0.0,
+                "valid_max": 200.0,
+            },
+            "KD490": {
+                "standard_name": "diffuse_attenuation_coefficient_of_downwelling_radiative_flux",
+                "units": "meter-1",
+                "long_name": "Diffuse Attenuation Coefficient at 490 nm",
+                "valid_min": 0.0,
+                "valid_max": 10.0,
+            },
+        },
+        temporal_resolution="daily",
+        spatial_resolution="0.04 degree (~4 km)",
+        data_type="satellite_observation",
+        spatial_coverage={"min_lon": 46.7, "max_lon": 99.3, "min_lat": 0.1, "max_lat": 27.9},
+        depth_levels_count=1,
+        depth_min=0.0,
+        depth_max=0.0,
+        time_coverage_start="2011-02-02T00:00:00Z",
+        source_documentation="https://erddap.incois.gov.in/erddap/info/incois_oceansat2_datasets/index.html",
+        licence_information="Government of India Open Access Data Policy",
+        verification_status="verified",
+    ),
 }
 
 
