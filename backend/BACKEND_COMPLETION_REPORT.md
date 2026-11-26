@@ -116,6 +116,20 @@ This milestone delivers the comprehensive, production-oriented marine scientific
 * **ADCP Current Profiles:** Parses vertical velocity profiles; computes current magnitude ($speed = \sqrt{u^2 + v^2}$) and compass direction ($\theta = \text{atan2}(u, v) \pmod{360}$).
 * **Quality Control:** Applies standard IODE/WOCE oceanographic QC flags (1=Good, 3=Questionable, 4=Bad).
 
+### 4.10 Data Reality, Storage Inventory & Scientific Transparency
+Following the comprehensive post-implementation acceptance audit (November 26, 2026), the platform explicitly documents the exact distinction between production code, real scientific observation data, and pipeline verification fixtures:
+* **Physical Oceanographic Data:** Real NetCDF data is verified and stored for Copernicus (`thetao`), NOAA CoastWatch (`sst`, `anom`), Argo GDAC (`temp`, `psal`, `pres`), and INCOIS (`wind_speed`, `wind_stress`) across local staging (24 NetCDF files, 422 KB) and SeaweedFS S3 `marine-raw` (4 NetCDF files).
+* **Marine Biodiversity & Taxonomy:** Real biodiversity occurrence records are verified and persisted in PostGIS `marine_species_occurrences` for OBIS (9 rows) and GBIF (5 live rows off Sri Lanka). WoRMS taxonomic resolution is verified with active caching in `marine_taxa` (AphiaID 127027). FAO fisheries statistics are persisted across 8 historical baseline records for IND, MDV, and LKA.
+* **Underwater Videos:** **NO REAL UNDERWATER VIDEOS FOUND.** The single MP4 file in `marine-media` (`7c9a2fb7_test_synthetic_rov_dive.mp4`) is a 55-byte synthetic ISO container header (`ftypmp42...moov...mdat`) designed solely to test the S3 upload and streaming pipeline. No real deep-sea ROV footage exists.
+* **eDNA Sequences:** **NO REAL HIGH-THROUGHPUT SEQUENCING FILES FOUND.** The two FASTQ files in `marine-edna` are 106-byte single-read synthetic fixtures (`@M02595:48...`) designed to test S3 compression, checksum calculation, and WoRMS reconciliation without storing multi-gigabyte raw sequence run archives.
+* **GEBCO Bathymetry:** Official GEBCO WMS (`wms.gebco.net`) provides 8-bit visual PNG map tiles. Numerical 32-bit elevation data is retrieved via the NOAA NCEI DEM Global Mosaic ImageServer (`gis.ngdc.noaa.gov`), which directly incorporates the GEBCO global bathymetric model.
+* **Comprehensive Audit Documents:** Complete forensic audit findings are recorded in:
+  - `DATA_SOURCE_AND_DATASET_INVENTORY.md`
+  - `DOWNLOADED_FILES_AND_MEDIA_INVENTORY.md`
+  - `DATABASE_AND_OBJECT_STORAGE_AUDIT.md`
+  - `FINAL_BACKEND_ACCEPTANCE_AUDIT.md`
+  - `MANUAL_COMPLETION_REQUIRED.md`
+
 ---
 
 ## 5. API Endpoint Inventory
