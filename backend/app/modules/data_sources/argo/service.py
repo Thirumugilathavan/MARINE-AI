@@ -204,11 +204,15 @@ class ArgoMarineProvider(BaseMarineProvider):
     def search_catalogue(
         self,
         query: str,
+        limit: int = 10,
         variables: Optional[List[str]] = None,
         data_type: Optional[str] = None,
+        keyword: Optional[str] = None,
+        **kwargs,
     ) -> List[ProviderDatasetMeta]:
+        search_term = query or keyword or ""
         results = []
-        q = query.lower()
+        q = search_term.lower()
         for meta in ARGO_VERIFIED_DATASETS.values():
             text = f"{meta.dataset_id} {meta.product_title} {meta.dataset_description}".lower()
             if q in text:
@@ -217,7 +221,7 @@ class ArgoMarineProvider(BaseMarineProvider):
                 if data_type and meta.data_type != data_type:
                     continue
                 results.append(meta)
-        return results
+        return results[:limit]
 
     def validate_parameters(self, params: UnifiedRetrievalParams) -> UnifiedRetrievalParams:
         meta = self.get_dataset(params.dataset_id)

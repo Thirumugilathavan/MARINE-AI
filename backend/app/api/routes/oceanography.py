@@ -4,12 +4,32 @@ FastAPI Routes for Oceanographic Observations: CTD Casts and ADCP Current Profil
 
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.modules.oceanography.parsers import oceanography_service
 
 router = APIRouter(prefix="/oceanography", tags=["Oceanographic CTD & ADCP Profiles"])
+
+
+class ProfileSummaryItem(BaseModel):
+    id: str
+    instrument_type: str
+    station_name: str
+    expedition_id: Optional[str] = None
+    latitude: float
+    longitude: float
+    max_depth_m: Optional[float] = None
+    total_levels: Optional[int] = None
+    source_filename: str
+
+
+class ProfileListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    profiles: List[ProfileSummaryItem]
 
 
 @router.post("/profiles/ctd/upload", status_code=status.HTTP_201_CREATED)
@@ -103,7 +123,7 @@ async def upload_adcp_profile(
         )
 
 
-@router.get("/profiles")
+@router.get("/profiles", response_model=ProfileListResponse)
 def list_profiles(
     instrument_type: Optional[str] = Query(None, description="'CTD' or 'ADCP'"),
     station_name: Optional[str] = Query(None),

@@ -186,7 +186,13 @@ class NOAAMarineProvider(BaseMarineProvider):
             )
         return NOAA_VERIFIED_DATASETS[dataset_id]
 
-    def search_catalogue(self, keyword: str, limit: int = 10) -> Dict[str, Any]:
+    def search_catalogue(
+        self,
+        keyword: str,
+        limit: int = 10,
+        data_type: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """Queries the live NOAA CoastWatch ERDDAP catalogue search endpoint."""
         url = f"{self.base_url}/search/index.json"
         params = {"searchFor": keyword}

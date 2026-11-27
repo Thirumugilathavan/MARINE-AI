@@ -1,0 +1,44 @@
+# SSTRIX MARINE-AI / SIH25041 — Infrastructure Docker Compose Configuration
+# Preserves existing PostgreSQL 17 + PostGIS 3.5 and SeaweedFS S3 object storage volumes.
+# NEVER run 'docker compose down -v' — doing so would destroy data directories.
+
+services:
+  postgres:
+    image: postgis/postgis:17-3.5
+    container_name: sstrix-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-sstrix_admin}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-Gomathys@12345}
+      POSTGRES_DB: ${DATABASE_NAME:-sstrix_marine}
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sstrix_admin -d sstrix_marine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: sstrix-seaweedfs
+    restart: unless-stopped
+    command: "mini -dir=/data -s3 -config=/etc/seaweedfs/s3.json"
+    ports:
+      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:12535:8888"
+    volumes:
+      - ./seaweedfs-data:/data
+      - ./config/s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8333/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  default:
+    name: sstrix-marine-net

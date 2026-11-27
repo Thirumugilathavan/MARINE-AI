@@ -20,7 +20,33 @@ class LifecycleUpdateRequest(BaseModel):
     quality_notes: Optional[str] = Field(None, description="Detailed verification or validation remarks")
 
 
-@router.get("/datasets")
+class CatalogueDatasetItem(BaseModel):
+    id: str
+    provider_id: str
+    dataset_name: str
+    dataset_description: Optional[str] = None
+    official_source_url: Optional[str] = None
+    target_variables: Optional[List[str]] = None
+    verification_lifecycle_status: str
+    sample_asset_path: Optional[str] = None
+    quality_notes: Optional[str] = None
+
+
+class CatalogueListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    datasets: List[CatalogueDatasetItem]
+
+
+class CatalogueSummaryResponse(BaseModel):
+    total_datasets: int
+    providers_count: int
+    by_provider: Dict[str, Dict[str, int]]
+    by_lifecycle_stage: Optional[Dict[str, int]] = None
+
+
+@router.get("/datasets", response_model=CatalogueListResponse)
 def list_datasets(
     provider_id: Optional[str] = Query(None, description="Filter by provider (e.g. copernicus, noaa, argo, gebco, worms, etc.)"),
     lifecycle_status: Optional[str] = Query(None, description="Filter by verification lifecycle status"),
@@ -45,7 +71,7 @@ def list_datasets(
     )
 
 
-@router.get("/datasets/{dataset_id}")
+@router.get("/datasets/{dataset_id}", response_model=CatalogueDatasetItem)
 def get_dataset_details(
     dataset_id: str,
     db: Session = Depends(get_db),
@@ -109,7 +135,7 @@ def update_dataset_lifecycle(
         )
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=CatalogueSummaryResponse)
 def get_catalogue_summary(db: Session = Depends(get_db)):
     """
     Returns high-level summary of catalogue entries by provider and lifecycle stage.

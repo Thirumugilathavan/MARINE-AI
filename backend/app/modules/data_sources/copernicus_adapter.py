@@ -98,7 +98,13 @@ class CopernicusMarineProvider(BaseMarineProvider):
             verification_status=ds.verification_status,
         )
 
-    def search_catalogue(self, keyword: str, limit: int = 10) -> Dict[str, Any]:
+    def search_catalogue(
+        self,
+        keyword: str,
+        limit: int = 10,
+        data_type: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
         return copernicus_search_catalogue(keyword=keyword, limit=limit)
 
     def validate_parameters(self, params: UnifiedRetrievalParams) -> None:

@@ -5,12 +5,36 @@ FastAPI Routes for Marine Images and Underwater Video Management.
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.modules.media.service import media_service
 
 router = APIRouter(prefix="/media", tags=["Marine Media (Images & Underwater Video)"])
+
+
+class MediaAssetItem(BaseModel):
+    id: str
+    filename: str
+    project_id: str
+    expedition_id: Optional[str] = None
+    mime_type: Optional[str] = None
+    file_size_bytes: int
+    bucket_name: str
+    storage_key: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    depth_meters: Optional[float] = None
+    sha256_checksum: str
+    created_at: Optional[datetime] = None
+
+
+class MediaAssetListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    assets: List[MediaAssetItem]
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -70,7 +94,7 @@ async def upload_media_asset(
         )
 
 
-@router.get("/assets")
+@router.get("/assets", response_model=MediaAssetListResponse)
 def list_media_assets(
     project_id: Optional[str] = Query(None),
     expedition_id: Optional[str] = Query(None),

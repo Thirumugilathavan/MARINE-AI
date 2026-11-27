@@ -1,6 +1,10 @@
 from contextlib import asynccontextmanager
 import logging
-from fastapi import FastAPI
+from typing import Dict
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.core.config import settings
@@ -58,7 +62,18 @@ app.include_router(media_router, prefix="/api/v1")
 app.include_router(oceanography_router, prefix="/api/v1")
 
 
-@app.get("/")
+class RootResponse(BaseModel):
+    project: str = Field(..., description="Application name")
+    message: str = Field(..., description="Status message")
+    version: str = Field(..., description="API version")
+
+
+class HealthCheckResponse(BaseModel):
+    status: str = Field(..., description="Overall platform health: 'healthy' or 'degraded'")
+    services: Dict[str, str] = Field(..., description="Individual dependency statuses")
+
+
+@app.get("/", response_model=RootResponse)
 def root():
     return {
         "project": settings.app_name,
@@ -67,7 +82,7 @@ def root():
     }
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthCheckResponse)
 def health_check():
     services = {}
 

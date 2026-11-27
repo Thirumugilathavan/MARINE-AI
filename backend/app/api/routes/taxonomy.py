@@ -6,6 +6,7 @@ taxonomic hierarchy traversal, and synonym tracking.
 
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,33 @@ from app.database.models import MarineTaxonModel, TaxonSynonymModel
 from app.modules.data_sources.worms.service import worms_service
 
 router = APIRouter(prefix="/taxonomy", tags=["Taxonomy & WoRMS"])
+
+
+class TaxaListItem(BaseModel):
+    aphia_id: int
+    scientific_name: str
+    authority: Optional[str] = None
+    rank: Optional[str] = None
+    status: Optional[str] = None
+    valid_aphia_id: Optional[int] = None
+    valid_name: Optional[str] = None
+    kingdom: Optional[str] = None
+    phylum: Optional[str] = None
+    class_name: Optional[str] = None
+    order_name: Optional[str] = None
+    family: Optional[str] = None
+    genus: Optional[str] = None
+    is_marine: Optional[bool] = None
+    citation: Optional[str] = None
+    lsid: Optional[str] = None
+    worms_url: Optional[str] = None
+
+
+class TaxaListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    taxa: List[TaxaListItem]
 
 
 @router.get("/worms/lookup/{scientific_name}")
@@ -100,7 +128,7 @@ def get_taxon_synonyms(
     }
 
 
-@router.get("/taxa")
+@router.get("/taxa", response_model=TaxaListResponse)
 def list_local_taxa(
     kingdom: Optional[str] = Query(None, description="Filter by Kingdom"),
     phylum: Optional[str] = Query(None, description="Filter by Phylum"),

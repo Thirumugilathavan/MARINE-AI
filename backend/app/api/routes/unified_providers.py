@@ -74,6 +74,14 @@ class UnifiedIngestionRequest(UnifiedPreviewRequest):
     asynchronous: bool = Field(False, description="Execute ingestion asynchronously via background task")
 
 
+class ProviderSearchResponse(BaseModel):
+    provider_id: str = Field(..., description="Provider identifier")
+    query: str = Field(..., description="Query term used")
+    total_found: int = Field(..., description="Total items matching query")
+    returned: int = Field(..., description="Number of items returned in this response")
+    results: List[Dict[str, Any]] = Field(default_factory=list, description="Matching products or datasets")
+
+
 # ==============================================================================
 # Provider Discovery & Catalogue Endpoints
 # ==============================================================================
@@ -113,24 +121,82 @@ def get_provider_dataset(provider_id: str, dataset_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@providers_router.get("/{provider_id}/search")
+@providers_router.get(
+    "/{provider_id}/search",
+    response_model=ProviderSearchResponse,
+    summary="Search Provider Catalogue",
+    description="Searches products or datasets for a specific registered marine provider.",
+    responses={
+        200: {"description": "Matching products or datasets returned"},
+        404: {"description": "Provider not found"},
+        422: {"description": "Validation error (e.g. query too short or limit out of bounds)"},
+        502: {"description": "Remote provider catalogue endpoint unavailable"},
+    },
+)
 def search_provider_catalogue(
     provider_id: str,
     query: str = Query(..., min_length=2, description="Search keyword, e.g. sst, wind, temp, salinity"),
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of items to return (1-50)"),
     data_type: Optional[str] = Query(None, description="Filter by data type"),
 ):
     """Searches the catalogue of a specific provider."""
+    clean_query = query.strip()
+    if len(clean_query) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                {
+                    "type": "string_too_short",
+                    "loc": ["query", "query"],
+                    "msg": "Query must contain at least 2 non-whitespace characters",
+                    "input": query,
+                    "ctx": {"min_length": 2},
+                }
+            ],
+        )
+
     try:
         provider = provider_registry.get(provider_id)
-        results = provider.search_catalogue(query, data_type=data_type)
-        return {
-            "provider_id": provider_id,
-            "query": query,
-            "total_found": len(results),
-            "results": [r.to_dict() for r in results],
-        }
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        raw_results = provider.search_catalogue(clean_query, limit=limit, data_type=data_type)
+
+        # Standardize between providers that return Dict with 'products' and those that return List[ProviderDatasetMeta]
+        if isinstance(raw_results, dict):
+            products = raw_results.get("products", [])
+            total_found = raw_results.get("total_found", len(products))
+            formatted_results = []
+            for p in products[:limit]:
+                if hasattr(p, "to_dict"):
+                    formatted_results.append(p.to_dict())
+                elif isinstance(p, dict):
+                    formatted_results.append(p)
+                else:
+                    formatted_results.append({"title": str(p)})
+        elif isinstance(raw_results, list):
+            total_found = len(raw_results)
+            formatted_results = [
+                r.to_dict() if hasattr(r, "to_dict") else r for r in raw_results[:limit]
+            ]
+        else:
+            total_found = 0
+            formatted_results = []
+
+        return {
+            "provider_id": provider_id,
+            "query": clean_query,
+            "total_found": total_found,
+            "returned": len(formatted_results),
+            "results": formatted_results,
+        }
+    except Exception as exc:
+        logger.error(f"Search failed for provider {provider_id}: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Catalogue search failed for provider '{provider_id}': {str(exc)}",
+        ) from exc
 
 
 # ==============================================================================

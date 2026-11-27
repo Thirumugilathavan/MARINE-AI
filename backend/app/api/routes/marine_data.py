@@ -29,6 +29,8 @@ from app.modules.data_sources.copernicus.service import (
 )
 from app.modules.data_sources.copernicus.validation import validator
 from app.modules.data_sources.copernicus.schemas import (
+    CopernicusProductItemSchema,
+    CopernicusSearchResponseSchema,
     PreviewRequestSchema,
     PreviewResponseSchema,
     IngestionRequestSchema,
@@ -58,7 +60,17 @@ _IN_MEMORY_JOBS: Dict[str, Dict[str, Any]] = {}
 # ==============================================================================
 # 1. Copernicus Catalogue Discovery (PRESERVED)
 # ==============================================================================
-@router.get("/copernicus/search")
+@router.get(
+    "/copernicus/search",
+    response_model=CopernicusSearchResponseSchema,
+    summary="Search Copernicus Marine Catalogue",
+    description="Searches the live Copernicus Marine catalogue for matching oceanographic products.",
+    responses={
+        200: {"description": "Matching products returned successfully"},
+        422: {"description": "Validation error (missing keyword, short keyword, or out-of-range limit)"},
+        502: {"description": "Copernicus Marine remote catalogue service unavailable"},
+    },
+)
 def search_copernicus(
     keyword: str = Query(
         ...,
@@ -69,15 +81,35 @@ def search_copernicus(
         10,
         ge=1,
         le=50,
-        description="Maximum number of products to return",
+        description="Maximum number of products to return (1-50)",
     ),
 ):
-    try:
-        return search_catalogue(keyword=keyword, limit=limit)
-
-    except Exception as exc:
+    clean_keyword = keyword.strip()
+    if len(clean_keyword) < 2:
         raise HTTPException(
-            status_code=502,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                {
+                    "type": "string_too_short",
+                    "loc": ["query", "keyword"],
+                    "msg": "String should have at least 2 characters",
+                    "input": keyword,
+                    "ctx": {"min_length": 2},
+                }
+            ],
+        )
+
+    try:
+        return search_catalogue(keyword=clean_keyword, limit=limit)
+    except CopernicusError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Copernicus Marine catalogue request failed: {str(exc)}",
+        ) from exc
+    except Exception as exc:
+        logger.error(f"Copernicus search error: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Copernicus Marine catalogue request failed: {str(exc)}",
         ) from exc
 
@@ -127,7 +159,9 @@ def preview_subset(request: PreviewRequestSchema):
 
     try:
         return preview_ingestion(params)
-    except (DatasetNotFoundError, InvalidVariableError, InvalidBoundsError) as exc:
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (InvalidVariableError, InvalidBoundsError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RetrievalError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -269,7 +303,9 @@ def create_ingestion(
                 "message": "Ingestion job submitted successfully.",
             }
 
-    except (DatasetNotFoundError, InvalidVariableError, InvalidBoundsError) as exc:
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (InvalidVariableError, InvalidBoundsError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to submit ingestion: {exc}") from exc

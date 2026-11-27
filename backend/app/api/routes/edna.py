@@ -47,6 +47,26 @@ class TaxonomicAssignmentCreateRequest(BaseModel):
     custom_interpretation: Optional[str] = None
 
 
+class EDNASampleSummary(BaseModel):
+    id: str
+    sample_code: str
+    project_id: str
+    latitude: float
+    longitude: float
+    target_gene: str
+    collection_depth_m: Optional[float] = None
+    water_body: Optional[str] = None
+    sequencing_platform: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class EDNASampleListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    samples: List[EDNASampleSummary]
+
+
 @router.post("/samples", status_code=status.HTTP_201_CREATED)
 def create_edna_sample(
     payload: EDNASampleCreateRequest,
@@ -92,7 +112,7 @@ def create_edna_sample(
         )
 
 
-@router.get("/samples")
+@router.get("/samples", response_model=EDNASampleListResponse)
 def list_edna_samples(
     project_id: Optional[str] = Query(None),
     target_gene: Optional[str] = Query(None),

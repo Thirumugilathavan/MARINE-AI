@@ -37,6 +37,41 @@ class FisheriesIngestRequest(BaseModel):
     records: List[FisheriesIngestRecord]
 
 
+class FisheriesStatisticItem(BaseModel):
+    id: str
+    country_iso3: str
+    country_name: str
+    fao_major_area: Optional[str] = None
+    species_scientific_name: Optional[str] = None
+    species_common_name: Optional[str] = None
+    species_alpha3_code: Optional[str] = None
+    production_type: str
+    environment: Optional[str] = None
+    year: int
+    quantity_tonnes: float
+    unit: str
+    source_dataset: str
+
+
+class FisheriesStatisticListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    statistics: List[FisheriesStatisticItem]
+
+
+class FisheriesSummaryItem(BaseModel):
+    country_iso3: str
+    country_name: str
+    production_type: str
+    year: int
+    total_tonnes: float
+
+
+class FisheriesSummaryResponse(BaseModel):
+    summary: List[FisheriesSummaryItem]
+
+
 @router.get("/areas")
 def get_fao_major_areas(
     ocean: Optional[str] = Query(None, description="Filter by Ocean (e.g. 'Indian', 'Pacific')")
@@ -53,7 +88,7 @@ def get_fao_major_areas(
     }
 
 
-@router.get("/statistics")
+@router.get("/statistics", response_model=FisheriesStatisticListResponse)
 def query_fisheries_statistics(
     country_iso3: Optional[str] = Query(None, description="ISO3 code (e.g. IND)"),
     fao_major_area: Optional[str] = Query(None, description="FAO Area substring e.g. '51' or 'Western Indian'"),
@@ -115,7 +150,7 @@ def ingest_fisheries_statistics(
     }
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=FisheriesSummaryResponse)
 def get_fisheries_summary(
     country_iso3: Optional[str] = Query(None),
     year: Optional[int] = Query(None),

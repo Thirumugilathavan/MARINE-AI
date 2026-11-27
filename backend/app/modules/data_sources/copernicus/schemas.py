@@ -7,6 +7,19 @@ from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 
 
+class CopernicusProductItemSchema(BaseModel):
+    product_id: str = Field(..., description="Unique Copernicus Marine product identifier")
+    title: str = Field(..., description="Official title of the marine product")
+
+
+class CopernicusSearchResponseSchema(BaseModel):
+    provider: str = Field("Copernicus Marine", description="Data provider name")
+    query: str = Field(..., description="Search keyword used")
+    total_found: int = Field(..., description="Total products found matching query")
+    returned: int = Field(..., description="Number of products returned in this page")
+    products: List[CopernicusProductItemSchema] = Field(default_factory=list, description="List of matching products")
+
+
 class PreviewRequestSchema(BaseModel):
     dataset_id: str = Field(
         default="cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m",
